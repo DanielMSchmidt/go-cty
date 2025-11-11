@@ -564,3 +564,182 @@ func TestValueMarksOfTypeDeep(t *testing.T) {
 		t.Error("wrong result\n" + diff)
 	}
 }
+
+func TestWithStructuralMarks(t *testing.T) {
+	for name, tc := range map[string]struct {
+		input     Value
+		marks     []PathValueMarks
+		wantMarks []PathValueMarks
+	}{
+		"no marks": {
+			input: UnknownVal(Object(map[string]Type{
+				"a": String,
+			})),
+			marks:     []PathValueMarks{},
+			wantMarks: []PathValueMarks{},
+		},
+		"add a mark": {
+			input: UnknownVal(Object(map[string]Type{
+				"a": String,
+			})),
+			marks: []PathValueMarks{{
+				Path:  Path{}.GetAttr("a"),
+				Marks: NewValueMarks("mark-a"),
+			}},
+			wantMarks: []PathValueMarks{{
+				Path:  Path{}.GetAttr("a"),
+				Marks: NewValueMarks("mark-a"),
+			}},
+		},
+		"add a mark at existing path": {
+			input: UnknownVal(Object(map[string]Type{
+				"a": String,
+			})).MarkWithPaths([]PathValueMarks{{
+				Path:  Path{}.GetAttr("a"),
+				Marks: NewValueMarks("existing-mark"),
+			}}),
+			marks: []PathValueMarks{{
+				Path:  Path{}.GetAttr("a"),
+				Marks: NewValueMarks("mark-a"),
+			}},
+			wantMarks: []PathValueMarks{{
+				Path:  Path{}.GetAttr("a"),
+				Marks: NewValueMarks("existing-mark", "mark-a"),
+			}},
+		},
+		"add a mark at non-existing path": {
+			input: UnknownVal(Object(map[string]Type{
+				"a": String,
+			})),
+			marks: []PathValueMarks{{
+				Path:  Path{}.GetAttr("b"),
+				Marks: NewValueMarks("mark-a"),
+			}},
+			wantMarks: []PathValueMarks{},
+		},
+		"add a mark on marked value": {
+			input: UnknownVal(Object(map[string]Type{
+				"a": String,
+			})).Mark("shallow-mark"),
+			marks: []PathValueMarks{{
+				Path:  Path{}.GetAttr("a"),
+				Marks: NewValueMarks("mark-a"),
+			}},
+			wantMarks: []PathValueMarks{{
+				Path:  Path{}.GetAttr("a"),
+				Marks: NewValueMarks("mark-a"),
+			}},
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			res := tc.input.WithStructuralMarks(tc.marks...)
+			resMarks := res.StructuralMarks()
+			if diff := cmp.Diff(tc.wantMarks, resMarks); diff != "" {
+				t.Error("wrong result\n" + diff)
+			}
+		})
+	}
+}
+
+func TestStructuralMarksWithUnknownObject(t *testing.T) {
+	unknownObj := UnknownVal(Object(map[string]Type{
+		"marked":   String,
+		"unmarked": String,
+	}))
+
+	// Only way to set deeply neseted marks
+	unknownObj = unknownObj.MarkWithPaths([]PathValueMarks{{
+		Path:  Path{}.GetAttr("marked"),
+		Marks: NewValueMarks("deep"),
+	}})
+
+	if unknownObj.IsMarked() {
+		t.Error("unexpected shallow mark")
+	}
+
+	shallowMarks := unknownObj.Marks()
+	if len(shallowMarks) != 0 {
+		t.Error("unexpected shallow marks:", shallowMarks)
+	}
+
+	_, m := unknownObj.UnmarkDeep()
+	if !m.Equal(NewValueMarks("deep")) {
+		t.Error("missing deep mark")
+	}
+
+	_, pvms := unknownObj.UnmarkDeepWithPaths()
+	if len(pvms) != 1 {
+		t.Fatal("wrong number of pvms:", pvms)
+	}
+}
+
+func TestStructuralMarksWithUnknownListOfObjects(t *testing.T) {
+	unknownObj := UnknownVal(List(Object(map[string]Type{
+		"marked":   String,
+		"unmarked": String,
+	})))
+
+	unknownObj = unknownObj.MarkWithPaths([]PathValueMarks{{
+		// If one value is marked, all are marked
+		Path:  Path{}.IndexInt(0).GetAttr("marked"),
+		Marks: NewValueMarks("deep"),
+	}})
+
+	if unknownObj.IsMarked() {
+		t.Error("unexpected shallow mark")
+	}
+
+	shallowMarks := unknownObj.Marks()
+	if len(shallowMarks) != 0 {
+		t.Error("unexpected shallow marks:", shallowMarks)
+	}
+
+	_, m := unknownObj.UnmarkDeep()
+	if !m.Equal(NewValueMarks("deep")) {
+		t.Error("missing deep mark")
+	}
+
+	_, pvms := unknownObj.UnmarkDeepWithPaths()
+	if len(pvms) != 1 {
+		t.Fatal("wrong number of pvms:", pvms)
+	}
+}
+
+func TestStructuralMarksWithNestedUnknownObject(t *testing.T) {
+	obj := ObjectVal(map[string]Value{
+		"nested": UnknownVal(List(Object(map[string]Type{
+			"marked":   String,
+			"unmarked": String,
+		}))),
+	})
+
+	obj = obj.MarkWithPaths([]PathValueMarks{{
+		Path:  Path{}.GetAttr("nested").IndexInt(0).GetAttr("marked"),
+		Marks: NewValueMarks("deep"),
+	}})
+
+	if obj.IsMarked() {
+		t.Error("unexpected shallow mark")
+	}
+
+	shallowMarks := obj.Marks()
+	if len(shallowMarks) != 0 {
+		t.Error("unexpected shallow marks:", shallowMarks)
+	}
+
+	_, m := obj.UnmarkDeep()
+	if !m.Equal(NewValueMarks("deep")) {
+		t.Error("missing deep mark")
+	}
+
+	_, pvms := obj.UnmarkDeepWithPaths()
+	if len(pvms) != 1 {
+		t.Fatal("wrong number of pvms:", pvms)
+	}
+
+	if !pvms[0].Path.Equals(Path{}.IndexInt(0).GetAttr("marked")) {
+		t.Errorf("wrong path in pvm: %#v", pvms[0].Path)
+	}
+}
+
+// TODO: add test for not matching paths

@@ -133,6 +133,16 @@ func (p Path) HasPrefix(prefix Path) bool {
 	return p[:len(prefix)].Equals(prefix)
 }
 
+func (p Path) TrimPrefix(prefix Path) (Path, bool) {
+	if len(prefix) == 0 {
+		return p, true
+	}
+	if !p.HasPrefix(prefix) {
+		return nil, false
+	}
+	return p[len(prefix):], true
+}
+
 // GetAttrPath is a convenience method to start a new Path with a GetAttrStep.
 func GetAttrPath(name string) Path {
 	return Path{}.GetAttr(name)

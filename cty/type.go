@@ -153,6 +153,45 @@ func (t Type) WithoutOptionalAttributesDeep() Type {
 	}
 }
 
+func (t Type) TypeAtPath(p Path) (Type, bool) {
+	if len(p) == 0 {
+		return t, true
+	}
+
+	// Dynamic types always match
+	if t == DynamicPseudoType {
+		return DynamicPseudoType, true
+	}
+
+	switch step := p[0].(type) {
+	case GetAttrStep:
+		if t.IsObjectType() {
+			attr, ok := t.AttributeTypes()[step.Name]
+			if ok {
+				return attr.TypeAtPath(p[1:])
+			} else {
+				return NilType, false
+			}
+		}
+
+		if t.IsMapType() {
+			elemType := t.ElementType()
+			return elemType.TypeAtPath(p[1:])
+		}
+
+		// We have an attribute step where no attributes exist
+		return NilType, false
+
+	case IndexStep:
+		if t.IsListType() || t.IsSetType() {
+			return t.ElementType().TypeAtPath(p[1:])
+		}
+	}
+
+	// The switch should be exhaustive
+	return NilType, false
+}
+
 type friendlyTypeNameMode rune
 
 const (

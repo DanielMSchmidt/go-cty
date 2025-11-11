@@ -23,6 +23,11 @@ func (val Value) GoString() string {
 		return fmt.Sprintf("%#v.WithMarks(%#v)", unVal, marks)
 	}
 
+	if len(val.StructuralMarks()) > 0 {
+		unVal, marks := val.UnmarkStructural()
+		return fmt.Sprintf("%#v.WithStructuralMarks(%#v)", unVal, marks)
+	}
+
 	if val == NilVal {
 		return "cty.NilVal"
 	}

@@ -21,8 +21,9 @@ import (
 // an application that never marks a value does not need to worry about
 // encountering marked values.
 type marker struct {
-	realV any
-	marks ValueMarks
+	realV           any
+	marks           ValueMarks
+	structuralMarks []PathValueMarks
 }
 
 // ValueMarks is a map, representing a set, of "mark" values associated with
@@ -109,8 +110,10 @@ func (p PathValueMarks) Equal(o PathValueMarks) bool {
 // one mark. A marked value cannot be used directly with integration methods
 // without explicitly unmarking it (and retrieving the markings) first.
 func (val Value) IsMarked() bool {
-	_, ok := val.v.(marker)
-	return ok
+	if m, ok := val.v.(marker); ok {
+		return len(m.marks) > 0
+	}
+	return false
 }
 
 // HasMark returns true if and only if the receiving value has the given mark.
@@ -125,6 +128,11 @@ func (val Value) HasMark(mark any) bool {
 // HasMarkDeep is like [HasMark] but also searches any values nested inside
 // the given value.
 func (val Value) HasMarkDeep(mark any) bool {
+	if m, ok := val.v.(marker); ok {
+		if len(m.structuralMarks) > 0 {
+			return true
+		}
+	}
 	for _, v := range DeepValues(val) {
 		if v.HasMark(mark) {
 			return true
@@ -207,6 +215,16 @@ func (val Value) Marks() ValueMarks {
 	return nil
 }
 
+func (val Value) StructuralMarks() []PathValueMarks {
+	if mr, ok := val.v.(marker); ok {
+		ret := make([]PathValueMarks, len(mr.structuralMarks))
+		// copy so that the caller can't mutate our internals
+		copy(ret, mr.structuralMarks)
+		return ret
+	}
+	return []PathValueMarks{}
+}
+
 // HasSameMarks returns true if an only if the receiver and the given other
 // value have identical marks.
 func (val Value) HasSameMarks(other Value) bool {
@@ -274,6 +292,22 @@ func (t *applyPathValueMarksTransformer) Enter(p Path, v Value) (Value, error) {
 }
 
 func (t *applyPathValueMarksTransformer) Exit(p Path, v Value) (Value, error) {
+	if !v.IsKnown() {
+		// We need to apply the structural marks here
+		// multiple path value marks can apply to the same value
+		newV := v
+		for _, path := range t.pvm {
+			if restPath, ok := path.Path.TrimPrefix(p); ok {
+				newV = newV.WithStructuralMarks(PathValueMarks{
+					Path:  restPath,
+					Marks: path.Marks,
+				})
+			}
+		}
+
+		return newV, nil
+	}
+
 	for _, path := range t.pvm {
 		if p.Equals(path.Path) {
 			return v.WithMarks(path.Marks), nil
@@ -320,10 +354,21 @@ func (val Value) Unmark() (Value, ValueMarks) {
 // during the operation.
 func (val Value) UnmarkDeep() (Value, ValueMarks) {
 	retMarks := make(ValueMarks)
+	// TODO: WrangleMarksDeep does not handle structural marks, we will need to add them there as well in case the unknown value is nested
 	retVal, _ := val.WrangleMarksDeep(func(mark any, path Path) (ctymarks.WrangleAction, error) {
 		retMarks[mark] = struct{}{}
 		return ctymarks.WrangleDrop, nil
 	})
+
+	// We also consider the structural marks since they are used to declare the same kind of marks
+	// in deep values where the structure prohibits marking directly (like unknown values)
+	retVal, pvms := retVal.UnmarkStructural()
+	for _, pvm := range pvms {
+		for mark := range pvm.Marks {
+			retMarks[mark] = struct{}{}
+		}
+	}
+
 	return retVal, retMarks
 }
 
@@ -349,6 +394,12 @@ func (val Value) UnmarkDeepWithPaths() (Value, []PathValueMarks) {
 		})
 		return ctymarks.WrangleDrop, nil
 	})
+
+	// We also consider the structural marks since they are used to declare the same kind of marks
+	// in deep values where the structure prohibits marking directly (like unknown values)
+	retVal, structuralPvm := retVal.UnmarkStructural()
+	pvm = append(pvm, structuralPvm...)
+
 	return retVal, pvm
 }
 
@@ -392,6 +443,66 @@ func (val Value) WithMarks(marks ...ValueMarks) Value {
 			marks: newMarks,
 		},
 	}
+}
+
+func (val Value) WithStructuralMarks(pvms ...PathValueMarks) Value {
+	if len(pvms) == 0 {
+		return val
+	}
+	ownMarks := val.Marks()
+	ownStructuralMarks := val.StructuralMarks()
+
+PVMS_LOOP:
+	for _, pvm := range pvms {
+		for _, ownPvm := range ownStructuralMarks {
+			if pvm.Path.Equals(ownPvm.Path) {
+				for m := range pvm.Marks {
+					ownPvm.Marks[m] = struct{}{}
+				}
+				continue PVMS_LOOP // We added the mark to an existing path, so skip adding a new one
+			}
+		}
+
+		// If we reach here, we didn't find an existing path, so we add the new one
+		// if the type actually has that path
+		if _, ok := val.Type().TypeAtPath(pvm.Path); ok {
+			ownStructuralMarks = append(ownStructuralMarks, pvm)
+		}
+	}
+	v := val.v
+	if mr, ok := v.(marker); ok {
+		v = mr.realV
+	}
+	return Value{
+		ty: val.ty,
+		v: marker{
+			realV:           v,
+			marks:           ownMarks,
+			structuralMarks: ownStructuralMarks,
+		},
+	}
+}
+
+func (val Value) UnmarkStructural() (Value, []PathValueMarks) {
+	structuralMarks := val.StructuralMarks()
+	if len(structuralMarks) == 0 {
+		return val, structuralMarks
+	}
+	mr := val.v.(marker)
+	marks := val.Marks()
+	if len(marks) == 0 {
+		return Value{
+			ty: val.ty,
+			v:  mr.realV,
+		}, structuralMarks
+	}
+	return Value{
+		ty: val.ty,
+		v: marker{
+			realV: mr.realV,
+			marks: marks,
+		},
+	}, structuralMarks
 }
 
 // WithSameMarks returns a new value that has the same type and underlying
