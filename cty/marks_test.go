@@ -742,4 +742,44 @@ func TestStructuralMarksWithNestedUnknownObject(t *testing.T) {
 	}
 }
 
-// TODO: add test for not matching paths
+func TestStructuralMarksWithGetValue(t *testing.T) {
+	obj := ObjectVal(map[string]Value{
+		"nested": UnknownVal(List(Object(map[string]Type{
+			"marked":   String,
+			"unmarked": String,
+		}))),
+	})
+
+	obj = obj.MarkWithPaths([]PathValueMarks{{
+		Path:  Path{}.GetAttr("nested"),
+		Marks: NewValueMarks("light"),
+	}, {
+		Path:  Path{}.GetAttr("nested").IndexInt(0).GetAttr("marked"),
+		Marks: NewValueMarks("deep"),
+	}})
+
+	if obj.IsMarked() {
+		t.Error("unexpected shallow mark")
+	}
+
+	fmt.Printf("\n\t obj --> %#v\n", obj)
+
+	markedVal := obj.GetAttr("nested")
+	fmt.Printf("\n\t markedVal1 --> %#v\n", markedVal)
+	if !markedVal.HasMark("light") {
+		t.Error("missing light mark on retrieved value")
+	}
+	markedVal = markedVal.Index(NumberIntVal(0))
+	fmt.Printf("\n\t markedVal2 --> %#v\n", markedVal)
+	if !markedVal.HasMark("light") {
+		t.Error("missing light mark on retrieved value")
+	}
+	markedVal = markedVal.GetAttr("marked")
+	fmt.Printf("\n\t markedVal3 --> %#v\n", markedVal)
+	if !markedVal.HasMark("light") {
+		t.Error("missing light mark on retrieved value")
+	}
+	if !markedVal.HasMark("deep") {
+		t.Error("missing deep mark on retrieved value")
+	}
+}

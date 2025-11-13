@@ -298,10 +298,14 @@ func (t *applyPathValueMarksTransformer) Exit(p Path, v Value) (Value, error) {
 		newV := v
 		for _, path := range t.pvm {
 			if restPath, ok := path.Path.TrimPrefix(p); ok {
-				newV = newV.WithStructuralMarks(PathValueMarks{
-					Path:  restPath,
-					Marks: path.Marks,
-				})
+				if len(restPath) == 0 {
+					newV = newV.WithMarks(path.Marks)
+				} else {
+					newV = newV.WithStructuralMarks(PathValueMarks{
+						Path:  restPath,
+						Marks: path.Marks,
+					})
+				}
 			}
 		}
 

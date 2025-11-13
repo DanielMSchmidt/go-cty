@@ -12,15 +12,16 @@ import (
 // source-like representations of values suitable for use in debug messages.
 func (val Value) GoString() string {
 	if val.IsMarked() {
-		unVal, marks := val.Unmark()
+		x, structuralmarks := val.UnmarkStructural()
+		unVal, marks := x.Unmark()
 		if len(marks) == 1 {
 			var mark any
 			for m := range marks {
 				mark = m
 			}
-			return fmt.Sprintf("%#v.Mark(%#v)", unVal, mark)
+			return fmt.Sprintf("%#v.Mark(%#v)", unVal.WithStructuralMarks(structuralmarks...), mark)
 		}
-		return fmt.Sprintf("%#v.WithMarks(%#v)", unVal, marks)
+		return fmt.Sprintf("%#v.WithMarks(%#v)", unVal.WithStructuralMarks(structuralmarks...), marks)
 	}
 
 	if len(val.StructuralMarks()) > 0 {
@@ -796,6 +797,27 @@ func (val Value) Absolute() Value {
 // This method may be called on a value whose type is DynamicPseudoType,
 // in which case the result will also be DynamicVal.
 func (val Value) GetAttr(name string) Value {
+	if len(val.StructuralMarks()) > 0 {
+		val, valMarks := val.UnmarkStructural()
+		newValMarks := []PathValueMarks{}
+		for _, mark := range valMarks {
+			trimmedPath, ok := mark.Path.TrimPrefix(GetAttrPath(name))
+			if !ok {
+				panic("structural mark path does not match GetAttr")
+			}
+			newValMarks = append(newValMarks, PathValueMarks{
+				Path:  trimmedPath,
+				Marks: mark.Marks,
+			})
+		}
+		if val.IsMarked() {
+			val, valMarks := val.Unmark()
+			return val.GetAttr(name).WithMarks(valMarks).MarkWithPaths(newValMarks)
+		}
+
+		return val.GetAttr(name).MarkWithPaths(newValMarks)
+	}
+
 	if val.IsMarked() {
 		val, valMarks := val.Unmark()
 		return val.GetAttr(name).WithMarks(valMarks)
@@ -843,6 +865,30 @@ func (val Value) GetAttr(name string) Value {
 // This method may be called on a value whose type is DynamicPseudoType,
 // in which case the result will also be the DynamicValue.
 func (val Value) Index(key Value) Value {
+	if len(val.StructuralMarks()) > 0 {
+		val, valMarks := val.UnmarkStructural()
+		newMarks := []PathValueMarks{}
+		for _, mark := range valMarks {
+			trimmedPath, ok := mark.Path.TrimPrefix(IndexPath(key))
+			if !ok {
+				panic("structural mark path does not match Index")
+			}
+
+			newMarks = append(newMarks, PathValueMarks{
+				Path:  trimmedPath,
+				Marks: mark.Marks,
+			})
+		}
+
+		if val.IsMarked() || key.IsMarked() {
+			val, valMarks := val.Unmark()
+			key, keyMarks := key.Unmark()
+			return val.Index(key).WithMarks(valMarks, keyMarks).MarkWithPaths(newMarks)
+		}
+
+		return val.Index(key).MarkWithPaths(newMarks)
+	}
+
 	if val.IsMarked() || key.IsMarked() {
 		val, valMarks := val.Unmark()
 		key, keyMarks := key.Unmark()
