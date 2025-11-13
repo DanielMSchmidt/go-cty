@@ -3700,6 +3700,22 @@ func TestValueGoString(t *testing.T) {
 			UnknownVal(Number).Refine().NumberRangeInclusive(Zero, NumberIntVal(1)).NewValue(),
 			`cty.UnknownVal(cty.Number).Refine().NumberLowerBound(cty.NumberIntVal(0), true).NumberUpperBound(cty.NumberIntVal(1), true).NewValue()`,
 		},
+		{
+			UnknownVal(String).Mark("foo"),
+			`cty.UnknownVal(cty.String).Mark("foo")`,
+		},
+		{
+			UnknownVal(Object(map[string]Type{"foo": Bool})).Mark("foo"),
+			`cty.UnknownVal(cty.Object(map[string]cty.Type{"foo":cty.Bool})).Mark("foo")`,
+		},
+		{
+			UnknownVal(Object(map[string]Type{"foo": Bool})).MarkWithPaths([]PathValueMarks{{Path: GetAttrPath("foo"), Marks: NewValueMarks("Hello")}}),
+			`cty.UnknownVal(cty.Object(map[string]cty.Type{"foo":cty.Bool})).WithStructuralMarks([]cty.PathValueMarks{cty.PathValueMarks{Path:cty.Path{cty.GetAttrStep{Name:"foo"}}, Marks:cty.NewValueMarks("Hello")}})`,
+		},
+		{
+			UnknownVal(Object(map[string]Type{"foo": Bool})).MarkWithPaths([]PathValueMarks{{Path: GetAttrPath("foo"), Marks: NewValueMarks("Hello")}}).Mark("Outer"),
+			`cty.UnknownVal(cty.Object(map[string]cty.Type{"foo":cty.Bool})).WithStructuralMarks([]cty.PathValueMarks{cty.PathValueMarks{Path:cty.Path{cty.GetAttrStep{Name:"foo"}}, Marks:cty.NewValueMarks("Hello")}}).Mark("Outer")`,
+		},
 
 		{
 			StringVal(""),

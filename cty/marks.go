@@ -191,6 +191,9 @@ func (val Value) ContainsMarked() bool {
 			return true
 		}
 	}
+	if len(val.StructuralMarks()) > 0 {
+		return true
+	}
 	return false
 }
 

@@ -136,6 +136,11 @@ func (val Value) GoString() string {
 // Use RawEquals to compare if two values are equal *ignoring* the
 // short-circuit rules and the exception for null values.
 func (val Value) Equals(other Value) Value {
+
+	fmt.Printf("\n\t val --> %#v\n", val)
+	fmt.Printf("\n\t other --> %#v\n", other)
+	fmt.Printf("\n\t val.ContainsMarked() --> %#v\n", val.ContainsMarked())
+	fmt.Printf("\n\t other.ContainsMarked() --> %#v\n", other.ContainsMarked())
 	if val.ContainsMarked() || other.ContainsMarked() {
 		val, valMarks := val.UnmarkDeep()
 		other, otherMarks := other.UnmarkDeep()
@@ -801,14 +806,13 @@ func (val Value) GetAttr(name string) Value {
 		val, valMarks := val.UnmarkStructural()
 		newValMarks := []PathValueMarks{}
 		for _, mark := range valMarks {
-			trimmedPath, ok := mark.Path.TrimPrefix(GetAttrPath(name))
-			if !ok {
-				panic("structural mark path does not match GetAttr")
+			// We only care about marks that apply to this attribute access
+			if trimmedPath, ok := mark.Path.TrimPrefix(GetAttrPath(name)); ok {
+				newValMarks = append(newValMarks, PathValueMarks{
+					Path:  trimmedPath,
+					Marks: mark.Marks,
+				})
 			}
-			newValMarks = append(newValMarks, PathValueMarks{
-				Path:  trimmedPath,
-				Marks: mark.Marks,
-			})
 		}
 		if val.IsMarked() {
 			val, valMarks := val.Unmark()
@@ -990,10 +994,14 @@ func (val Value) Index(key Value) Value {
 // This method will panic if the receiver is not indexable, but does not
 // impose any panic-causing type constraints on the key.
 func (val Value) HasIndex(key Value) Value {
-	if val.IsMarked() || key.IsMarked() {
+	fmt.Printf("\n\t val --> %#v\n", val)
+	if val.IsMarked() || key.IsMarked() || len(val.StructuralMarks()) > 0 || len(key.StructuralMarks()) > 0 {
+		val, structuralValMarks := val.UnmarkStructural()
+		key, structuralKeyMarks := key.UnmarkStructural()
 		val, valMarks := val.Unmark()
 		key, keyMarks := key.Unmark()
-		return val.HasIndex(key).WithMarks(valMarks, keyMarks)
+
+		return val.HasIndex(key).WithMarks(valMarks, keyMarks).MarkWithPaths(structuralKeyMarks).MarkWithPaths(structuralValMarks)
 	}
 
 	if val.ty == DynamicPseudoType {
