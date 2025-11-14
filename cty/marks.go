@@ -129,8 +129,10 @@ func (val Value) HasMark(mark any) bool {
 // the given value.
 func (val Value) HasMarkDeep(mark any) bool {
 	if m, ok := val.v.(marker); ok {
-		if len(m.structuralMarks) > 0 {
-			return true
+		for _, v := range m.structuralMarks {
+			if _, ok := v.Marks[mark]; ok {
+				return true
+			}
 		}
 	}
 	for _, v := range DeepValues(val) {
@@ -324,6 +326,22 @@ func (t *applyPathValueMarksTransformer) Exit(p Path, v Value) (Value, error) {
 	return v, nil
 }
 
+type findStructuralMarksTransformer struct {
+	structuralMarks []PathValueMarks
+}
+
+func (t *findStructuralMarksTransformer) Enter(p Path, v Value) (Value, error) {
+	return v, nil
+}
+
+func (t *findStructuralMarksTransformer) Exit(p Path, v Value) (Value, error) {
+	if newV, structuralMarks := v.UnmarkStructural(); len(structuralMarks) > 0 {
+		t.structuralMarks = append(t.structuralMarks, structuralMarks...)
+		return newV, nil
+	}
+	return v, nil
+}
+
 // MarkWithPaths accepts a slice of PathValueMarks to apply
 // markers to particular paths and returns the marked
 // Value.
@@ -362,20 +380,23 @@ func (val Value) Unmark() (Value, ValueMarks) {
 // during the operation.
 func (val Value) UnmarkDeep() (Value, ValueMarks) {
 	retMarks := make(ValueMarks)
-	// TODO: WrangleMarksDeep does not handle structural marks, we will need to add them there as well in case the unknown value is nested
-	retVal, _ := val.WrangleMarksDeep(func(mark any, path Path) (ctymarks.WrangleAction, error) {
-		retMarks[mark] = struct{}{}
-		return ctymarks.WrangleDrop, nil
-	})
 
 	// We also consider the structural marks since they are used to declare the same kind of marks
 	// in deep values where the structure prohibits marking directly (like unknown values)
-	retVal, pvms := retVal.UnmarkStructural()
+	retVal, pvms := val.UnmarkStructuralDeep()
+	fmt.Printf("\n\t retVal --> %#v\n", retVal)
+	fmt.Printf("\n\t pvms --> %#v\n", pvms)
 	for _, pvm := range pvms {
 		for mark := range pvm.Marks {
 			retMarks[mark] = struct{}{}
 		}
 	}
+	fmt.Printf("\n\t retMarks --> %#v\n", retMarks)
+
+	retVal, _ = retVal.WrangleMarksDeep(func(mark any, path Path) (ctymarks.WrangleAction, error) {
+		retMarks[mark] = struct{}{}
+		return ctymarks.WrangleDrop, nil
+	})
 
 	return retVal, retMarks
 }
@@ -491,13 +512,31 @@ PVMS_LOOP:
 	}
 }
 
+func (val Value) UnmarkStructuralDeep() (Value, []PathValueMarks) {
+	val, rootPVMs := val.UnmarkStructural()
+	// If we have structural marks on this level we can skip the deep unmarking
+	// since this value seems to be a leaf node for structural marks
+	if len(rootPVMs) > 0 {
+		return val, rootPVMs
+	}
+
+	// TODO: Write tests for this function and transformer
+	t := &findStructuralMarksTransformer{structuralMarks: []PathValueMarks{}}
+	ret, _ := TransformWithTransformer(val, t)
+	return ret, t.structuralMarks
+}
+
 func (val Value) UnmarkStructural() (Value, []PathValueMarks) {
 	structuralMarks := val.StructuralMarks()
+	fmt.Printf("\n\t UnmarkStructural() structuralMarks --> %#v\n", structuralMarks)
+
 	if len(structuralMarks) == 0 {
 		return val, structuralMarks
 	}
+
 	mr := val.v.(marker)
 	marks := val.Marks()
+	fmt.Printf("\n\t marks --> %#v\n", marks)
 	if len(marks) == 0 {
 		return Value{
 			ty: val.ty,

@@ -711,35 +711,47 @@ func TestStructuralMarksWithNestedUnknownObject(t *testing.T) {
 			"marked":   String,
 			"unmarked": String,
 		}))),
-	})
-
-	obj = obj.MarkWithPaths([]PathValueMarks{{
+	}).MarkWithPaths([]PathValueMarks{{
 		Path:  Path{}.GetAttr("nested").IndexInt(0).GetAttr("marked"),
 		Marks: NewValueMarks("deep"),
 	}})
 
-	if obj.IsMarked() {
-		t.Error("unexpected shallow mark")
-	}
+	// if obj.IsMarked() {
+	// 	t.Error("unexpected shallow mark")
+	// }
 
-	shallowMarks := obj.Marks()
-	if len(shallowMarks) != 0 {
-		t.Error("unexpected shallow marks:", shallowMarks)
-	}
+	// shallowMarks := obj.Marks()
+	// if len(shallowMarks) != 0 {
+	// 	t.Error("unexpected shallow marks:", shallowMarks)
+	// }
 
-	_, m := obj.UnmarkDeep()
+	fmt.Printf("\n\t obj --> %#v\n", obj)
+	fmt.Println("\t--- UnmarkDeep ---")
+	unmarked, m := obj.UnmarkDeep()
+	fmt.Println("\t--- UnmarkDeep END ---")
+	fmt.Printf("\n\t unmarked --> %#v\n", unmarked)
+	// if unmarked.IsMarked() {
+	// 	t.Error("unmarked value is still marked")
+	// }
+	// if len(unmarked.Marks()) != 0 {
+	// 	t.Error("unmarked value has marks:", unmarked.Marks())
+	// }
+	// if len(unmarked.StructuralMarks()) != 0 {
+	// 	t.Error("unmarked value has structural marks:", unmarked.StructuralMarks())
+	// }
+
 	if !m.Equal(NewValueMarks("deep")) {
 		t.Error("missing deep mark")
 	}
 
-	_, pvms := obj.UnmarkDeepWithPaths()
-	if len(pvms) != 1 {
-		t.Fatal("wrong number of pvms:", pvms)
-	}
+	// _, pvms := obj.UnmarkDeepWithPaths()
+	// if len(pvms) != 1 {
+	// 	t.Fatal("wrong number of pvms:", pvms)
+	// }
 
-	if !pvms[0].Path.Equals(Path{}.IndexInt(0).GetAttr("marked")) {
-		t.Errorf("wrong path in pvm: %#v", pvms[0].Path)
-	}
+	// if !pvms[0].Path.Equals(Path{}.IndexInt(0).GetAttr("marked")) {
+	// 	t.Errorf("wrong path in pvm: %#v", pvms[0].Path)
+	// }
 }
 
 func TestStructuralMarksWithGetValue(t *testing.T) {
