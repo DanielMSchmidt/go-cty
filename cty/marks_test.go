@@ -762,20 +762,15 @@ func TestStructuralMarksWithGetValue(t *testing.T) {
 		t.Error("unexpected shallow mark")
 	}
 
-	fmt.Printf("\n\t obj --> %#v\n", obj)
-
 	markedVal := obj.GetAttr("nested")
-	fmt.Printf("\n\t markedVal1 --> %#v\n", markedVal)
 	if !markedVal.HasMark("light") {
 		t.Error("missing light mark on retrieved value")
 	}
 	markedVal = markedVal.Index(NumberIntVal(0))
-	fmt.Printf("\n\t markedVal2 --> %#v\n", markedVal)
 	if !markedVal.HasMark("light") {
 		t.Error("missing light mark on retrieved value")
 	}
 	markedVal = markedVal.GetAttr("marked")
-	fmt.Printf("\n\t markedVal3 --> %#v\n", markedVal)
 	if !markedVal.HasMark("light") {
 		t.Error("missing light mark on retrieved value")
 	}

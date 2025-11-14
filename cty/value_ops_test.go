@@ -2464,6 +2464,13 @@ func TestValueGetAttr(t *testing.T) {
 			"greeting",
 			StringVal("hello").Mark(1),
 		},
+		{
+			UnknownVal(Object(map[string]Type{
+				"hey": String, // precombined é
+			})).WithStructuralMarks(PathValueMarks{Path: GetAttrPath("hey"), Marks: NewValueMarks("hello")}),
+			"hey", // e with combining acute accent
+			UnknownVal(String).Mark("hello"),
+		},
 	}
 
 	for _, test := range tests {
@@ -2506,6 +2513,26 @@ func TestValueIndex(t *testing.T) {
 			UnknownVal(List(String)),
 			NumberIntVal(0),
 			UnknownVal(String),
+		},
+		{
+			UnknownVal(List(String)).Mark("foo"),
+			NumberIntVal(0),
+			UnknownVal(String).Mark("foo"),
+		},
+		{
+			UnknownVal(List(String)).Mark("foo").MarkWithPaths([]PathValueMarks{{Path: Path{}.IndexInt(0), Marks: NewValueMarks("bar")}}),
+			NumberIntVal(0),
+			UnknownVal(String).Mark("foo").Mark("bar"),
+		},
+		{
+			UnknownVal(List(List(String))).MarkWithPaths([]PathValueMarks{{Path: Path{}.IndexInt(0).IndexInt(0), Marks: NewValueMarks("bar")}}),
+			NumberIntVal(0),
+			UnknownVal(List(String)).MarkWithPaths([]PathValueMarks{{Path: Path{}.IndexInt(0), Marks: NewValueMarks("bar")}}),
+		},
+		{
+			UnknownVal(List(List(String))).Mark("foo").MarkWithPaths([]PathValueMarks{{Path: Path{}.IndexInt(0).IndexInt(0), Marks: NewValueMarks("bar")}}),
+			NumberIntVal(0),
+			UnknownVal(List(String)).Mark("foo").MarkWithPaths([]PathValueMarks{{Path: Path{}.IndexInt(0), Marks: NewValueMarks("bar")}}),
 		},
 		{
 			MapVal(map[string]Value{"greeting": StringVal("hello")}),

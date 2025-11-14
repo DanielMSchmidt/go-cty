@@ -272,6 +272,7 @@ func (val Value) Mark(mark any) Value {
 		for k, v := range mr.marks {
 			newMarker.marks[k] = v
 		}
+		newMarker.structuralMarks = val.StructuralMarks()
 		// unwrap the inner marked value, so we don't get multiple layers
 		// of marking.
 		newMarker.realV = mr.realV

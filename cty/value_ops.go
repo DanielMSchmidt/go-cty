@@ -12,8 +12,8 @@ import (
 // source-like representations of values suitable for use in debug messages.
 func (val Value) GoString() string {
 	if val.IsMarked() {
-		x, structuralmarks := val.UnmarkStructural()
-		unVal, marks := x.Unmark()
+		val, structuralmarks := val.UnmarkStructural()
+		unVal, marks := val.Unmark()
 		if len(marks) == 1 {
 			var mark any
 			for m := range marks {
@@ -136,11 +136,6 @@ func (val Value) GoString() string {
 // Use RawEquals to compare if two values are equal *ignoring* the
 // short-circuit rules and the exception for null values.
 func (val Value) Equals(other Value) Value {
-
-	fmt.Printf("\n\t val --> %#v\n", val)
-	fmt.Printf("\n\t other --> %#v\n", other)
-	fmt.Printf("\n\t val.ContainsMarked() --> %#v\n", val.ContainsMarked())
-	fmt.Printf("\n\t other.ContainsMarked() --> %#v\n", other.ContainsMarked())
 	if val.ContainsMarked() || other.ContainsMarked() {
 		val, valMarks := val.UnmarkDeep()
 		other, otherMarks := other.UnmarkDeep()
@@ -435,6 +430,19 @@ func (val Value) RawEquals(other Value) bool {
 	if !val.HasSameMarks(other) {
 		return false
 	}
+
+	val, valStructuralMarks := val.UnmarkStructural()
+	other, otherStructuralMarks := other.UnmarkStructural()
+	if len(valStructuralMarks) != len(otherStructuralMarks) {
+		return false
+	} else {
+		for i, mark := range valStructuralMarks {
+			if !mark.Equal(otherStructuralMarks[i]) {
+				return false
+			}
+		}
+	}
+
 	// Since we've now checked the marks, we'll unmark for the rest of this...
 	val = val.unmarkForce()
 	other = other.unmarkForce()
@@ -994,7 +1002,6 @@ func (val Value) Index(key Value) Value {
 // This method will panic if the receiver is not indexable, but does not
 // impose any panic-causing type constraints on the key.
 func (val Value) HasIndex(key Value) Value {
-	fmt.Printf("\n\t val --> %#v\n", val)
 	if val.IsMarked() || key.IsMarked() || len(val.StructuralMarks()) > 0 || len(key.StructuralMarks()) > 0 {
 		val, structuralValMarks := val.UnmarkStructural()
 		key, structuralKeyMarks := key.UnmarkStructural()
