@@ -790,3 +790,77 @@ func TestStructuralMarksWithGetValue(t *testing.T) {
 		t.Error("missing deep mark on retrieved value")
 	}
 }
+
+func TestUnmarkStructuralDeep(t *testing.T) {
+	for name, tc := range map[string]struct {
+		input     Value
+		wantValue Value
+		wantMarks []PathValueMarks
+	}{
+		"top-level marks": {
+			input: UnknownVal(Object(map[string]Type{
+				"a": String,
+				"b": List(String),
+			})).MarkWithPaths([]PathValueMarks{{
+				Path:  GetAttrPath("a"),
+				Marks: NewValueMarks("mark-a"),
+			}}),
+			wantValue: UnknownVal(Object(map[string]Type{
+				"a": String,
+				"b": List(String),
+			})),
+			wantMarks: []PathValueMarks{{
+				Path:  GetAttrPath("a"),
+				Marks: NewValueMarks("mark-a"),
+			}},
+		},
+		"nested marks": {
+			input: ObjectVal(map[string]Value{
+				"a": UnknownVal(Object(map[string]Type{
+					"b": String,
+				})),
+			}).MarkWithPaths([]PathValueMarks{{
+				Path:  GetAttrPath("a").GetAttr("b"),
+				Marks: NewValueMarks("mark-a"),
+			}}),
+			wantValue: ObjectVal(map[string]Value{
+				"a": UnknownVal(Object(map[string]Type{
+					"b": String,
+				})),
+			}),
+			wantMarks: []PathValueMarks{{
+				Path:  GetAttrPath("a").GetAttr("b"),
+				Marks: NewValueMarks("mark-a"),
+			}},
+		},
+		"retains normal marks": {
+			input: ObjectVal(map[string]Value{
+				"a": UnknownVal(Object(map[string]Type{
+					"b": String,
+				})),
+			}).MarkWithPaths([]PathValueMarks{{
+				Path:  GetAttrPath("a").GetAttr("b"),
+				Marks: NewValueMarks("mark-a"),
+			}}).Mark("shallow"),
+			wantValue: ObjectVal(map[string]Value{
+				"a": UnknownVal(Object(map[string]Type{
+					"b": String,
+				})),
+			}).Mark("shallow"),
+			wantMarks: []PathValueMarks{{
+				Path:  GetAttrPath("a").GetAttr("b"),
+				Marks: NewValueMarks("mark-a"),
+			}},
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			val, marks := tc.input.UnmarkStructuralDeep()
+			if !val.RawEquals(tc.wantValue) {
+				t.Errorf("(%s) wrong value\n got: %#v\nwant: %#v", name, val, tc.wantValue)
+			}
+			if diff := cmp.Diff(tc.wantMarks, marks); diff != "" {
+				t.Errorf("(%s) wrong marks\n%s", name, diff)
+			}
+		})
+	}
+}

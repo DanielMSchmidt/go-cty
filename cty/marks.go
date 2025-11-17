@@ -331,14 +331,21 @@ type findStructuralMarksTransformer struct {
 }
 
 func (t *findStructuralMarksTransformer) Enter(p Path, v Value) (Value, error) {
+	if newV, structuralMarks := v.UnmarkStructural(); len(structuralMarks) > 0 {
+		structuralMarksAtPath := make([]PathValueMarks, len(structuralMarks))
+		for i, sm := range structuralMarks {
+			structuralMarksAtPath[i] = PathValueMarks{
+				Path:  append(p, sm.Path...),
+				Marks: sm.Marks,
+			}
+		}
+		t.structuralMarks = append(t.structuralMarks, structuralMarksAtPath...)
+		return newV, nil
+	}
 	return v, nil
 }
 
 func (t *findStructuralMarksTransformer) Exit(p Path, v Value) (Value, error) {
-	if newV, structuralMarks := v.UnmarkStructural(); len(structuralMarks) > 0 {
-		t.structuralMarks = append(t.structuralMarks, structuralMarks...)
-		return newV, nil
-	}
 	return v, nil
 }
 
@@ -520,7 +527,6 @@ func (val Value) UnmarkStructuralDeep() (Value, []PathValueMarks) {
 		return val, rootPVMs
 	}
 
-	// TODO: Write tests for this function and transformer
 	t := &findStructuralMarksTransformer{structuralMarks: []PathValueMarks{}}
 	ret, _ := TransformWithTransformer(val, t)
 	return ret, t.structuralMarks
@@ -528,7 +534,6 @@ func (val Value) UnmarkStructuralDeep() (Value, []PathValueMarks) {
 
 func (val Value) UnmarkStructural() (Value, []PathValueMarks) {
 	structuralMarks := val.StructuralMarks()
-	fmt.Printf("\n\t UnmarkStructural() structuralMarks --> %#v\n", structuralMarks)
 
 	if len(structuralMarks) == 0 {
 		return val, structuralMarks
@@ -536,7 +541,6 @@ func (val Value) UnmarkStructural() (Value, []PathValueMarks) {
 
 	mr := val.v.(marker)
 	marks := val.Marks()
-	fmt.Printf("\n\t marks --> %#v\n", marks)
 	if len(marks) == 0 {
 		return Value{
 			ty: val.ty,
