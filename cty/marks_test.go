@@ -864,3 +864,41 @@ func TestUnmarkStructuralDeep(t *testing.T) {
 		})
 	}
 }
+
+func TestUnmarking(t *testing.T) {
+	val := ObjectVal(map[string]Value{
+		"a": StringVal("value").Mark("mark-a"),
+		"b": UnknownVal(Object(map[string]Type{
+			"c": String,
+		})),
+	}).Mark("shallow-mark").MarkWithPaths([]PathValueMarks{{Path: GetAttrPath("b").GetAttr("c"), Marks: NewValueMarks("deep-mark")}})
+
+	// UnmarkDeep clears both structural and non-structural marks
+	{
+		unmarked, marks := val.UnmarkDeep()
+		if len(marks) != 3 {
+			t.Errorf("expected 3 marks, got %d", len(marks))
+		}
+
+		if _, ok := unmarked.v.(marker); ok {
+			t.Errorf("expected completely unmarked value, got marked when first unmarking then structural unmarking")
+		}
+	}
+
+	// First structurally unmark, then unmark
+	{
+		structurallyUnmarked, structuralMarks := val.UnmarkStructuralDeep()
+		if len(structuralMarks) != 1 {
+			t.Errorf("expected 1 structural mark, got %d", len(structuralMarks))
+		}
+		unmarked, marks := structurallyUnmarked.UnmarkDeep()
+		if len(marks) != 2 {
+			t.Errorf("expected 2 marks, got %d", len(marks))
+		}
+
+		if _, ok := unmarked.v.(marker); ok {
+			t.Errorf("expected completely unmarked value, got marked when first structurally unmarking then unmarking")
+		}
+	}
+
+}

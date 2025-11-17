@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"iter"
 	"math/big"
+	"runtime/debug"
 
 	"github.com/zclconf/go-cty/cty/set"
 )
@@ -56,6 +57,13 @@ func (val Value) GoString() string {
 	// By the time we reach here we've dealt with all of the exceptions around
 	// unknowns and nulls, so we're guaranteed that the values are the
 	// canonical internal representation of the given type.
+
+	if m, ok := val.v.(marker); ok {
+		fmt.Printf("\n\t Go String THIS IS A MARKED VALUE, SHOULD NOT BE ONE --> %#v\n", m)
+		fmt.Println("===== Go String  ======")
+		debug.PrintStack()
+		fmt.Println("===== Go String  (END) ======")
+	}
 
 	switch val.ty {
 	case Bool:
@@ -139,8 +147,23 @@ func (val Value) Equals(other Value) Value {
 	if val.ContainsMarked() || other.ContainsMarked() {
 		val, valMarks := val.UnmarkDeep()
 		other, otherMarks := other.UnmarkDeep()
+
+		val.AssertUnmarked("val.ContainsUnmarked()")
+		other.AssertUnmarked("other.ContainsUnmarked()")
+
 		return val.Equals(other).WithMarks(valMarks, otherMarks)
+	} else {
+		val.AssertUnmarked("!val.ContainsMarked()")
+		other.AssertUnmarked("!other.ContainsMarked()")
 	}
+
+	fmt.Printf("\n\t val --> %#v\n", val)
+	fmt.Printf("\n\t other --> %#v\n", other)
+	fmt.Printf("\n\t val.IsKnown() --> %#v\n", val.IsKnown())
+	fmt.Printf("\n\t other.IsKnown() --> %#v\n", other.IsKnown())
+	fmt.Printf("\n\t other.IsNull() --> %#v\n", other.IsNull())
+	fmt.Printf("\n\t other.ty.HasDynamicTypes() --> %#v\n", other.ty.HasDynamicTypes())
+	fmt.Printf("\n\t val.ty.Equals(other.ty) --> %#v\n", val.ty.Equals(other.ty))
 
 	// Some easy cases with comparisons to null.
 	switch {
@@ -233,6 +256,11 @@ func (val Value) Equals(other Value) Value {
 
 	ty := val.ty
 	result := false
+
+	// TODO: Remove, should never have happened
+	if _, ok := val.v.(marker); ok {
+		fmt.Printf("\n\t THIS IS A MARKED VALUE, SHOULD NOT BE ONE --> %#v\n", val)
+	}
 
 	switch {
 	case ty == Number:
@@ -433,6 +461,7 @@ func (val Value) RawEquals(other Value) bool {
 
 	val, valStructuralMarks := val.UnmarkStructural()
 	other, otherStructuralMarks := other.UnmarkStructural()
+	// TODO: Properly check if marks are equal here
 	if len(valStructuralMarks) != len(otherStructuralMarks) {
 		return false
 	} else {

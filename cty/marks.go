@@ -188,19 +188,28 @@ func yieldValueMarksOfType[T any](v Value, yield func(T) bool) bool {
 // This operation is relatively expensive. If you only need a shallow result,
 // use IsMarked instead.
 func (val Value) ContainsMarked() bool {
+	val, structuralMarks := val.UnmarkStructuralDeep()
+	if len(structuralMarks) > 0 {
+		return true
+	}
 	for _, v := range DeepValues(val) {
 		if v.IsMarked() {
 			return true
 		}
 	}
-	if len(val.StructuralMarks()) > 0 {
+
+	// TODO: This means that we have a marker type when it is not necessary -> should be false and the marker should not exist
+	if _, ok := val.v.(marker); ok {
+		// fmt.Printf("\n\t m --> %#v\n", m)
+		// panic("value is marked, so must be unmarked first")
 		return true
 	}
+
 	return false
 }
 
 func (val Value) assertUnmarked() {
-	if val.IsMarked() {
+	if val.IsMarked() || len(val.StructuralMarks()) > 0 {
 		panic("value is marked, so must be unmarked first")
 	}
 }
@@ -373,9 +382,21 @@ func (val Value) Unmark() (Value, ValueMarks) {
 	}
 	mr := val.v.(marker)
 	marks := val.Marks() // copy so that the caller can't mutate our internals
+	structuralMarks := val.StructuralMarks()
+	if len(structuralMarks) == 0 {
+		return Value{
+			ty: val.ty,
+			v:  mr.realV,
+		}, marks
+	}
+
+	// We still have structural marks, so we need to retain those
 	return Value{
 		ty: val.ty,
-		v:  mr.realV,
+		v: marker{
+			realV:           mr.realV,
+			structuralMarks: structuralMarks,
+		},
 	}, marks
 }
 
@@ -391,14 +412,11 @@ func (val Value) UnmarkDeep() (Value, ValueMarks) {
 	// We also consider the structural marks since they are used to declare the same kind of marks
 	// in deep values where the structure prohibits marking directly (like unknown values)
 	retVal, pvms := val.UnmarkStructuralDeep()
-	fmt.Printf("\n\t retVal --> %#v\n", retVal)
-	fmt.Printf("\n\t pvms --> %#v\n", pvms)
 	for _, pvm := range pvms {
 		for mark := range pvm.Marks {
 			retMarks[mark] = struct{}{}
 		}
 	}
-	fmt.Printf("\n\t retMarks --> %#v\n", retMarks)
 
 	retVal, _ = retVal.WrangleMarksDeep(func(mark any, path Path) (ctymarks.WrangleAction, error) {
 		retMarks[mark] = struct{}{}
@@ -554,6 +572,12 @@ func (val Value) UnmarkStructural() (Value, []PathValueMarks) {
 			marks: marks,
 		},
 	}, structuralMarks
+}
+
+func (val Value) AssertUnmarked(name string) {
+	if _, ok := val.v.(marker); ok {
+		panic(fmt.Sprintf("value for %s is marked, so must be unmarked first", name))
+	}
 }
 
 // WithSameMarks returns a new value that has the same type and underlying

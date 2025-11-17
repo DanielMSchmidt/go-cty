@@ -872,6 +872,25 @@ func TestValueEquals(t *testing.T) {
 			}),
 			True.WithMarks(NewValueMarks("boop", "blop")),
 		},
+
+		{
+			UnknownVal(Object(map[string]Type{
+				"a": String,
+			})).MarkWithPaths([]PathValueMarks{{Path: GetAttrPath("a"), Marks: NewValueMarks("mark-a")}}),
+			UnknownVal(Object(map[string]Type{
+				"a": String,
+			})).MarkWithPaths([]PathValueMarks{{Path: GetAttrPath("a"), Marks: NewValueMarks("mark-b")}}),
+			UnknownVal(Bool).RefineNotNull().WithMarks(NewValueMarks("mark-a", "mark-b")),
+		},
+		{
+			UnknownVal(Object(map[string]Type{
+				"a": String,
+			})).MarkWithPaths([]PathValueMarks{{Path: GetAttrPath("a"), Marks: NewValueMarks("mark-a")}}).Mark("outer-mark-a"),
+			UnknownVal(Object(map[string]Type{
+				"a": String,
+			})).MarkWithPaths([]PathValueMarks{{Path: GetAttrPath("a"), Marks: NewValueMarks("mark-b")}}),
+			UnknownVal(Bool).RefineNotNull().WithMarks(NewValueMarks("outer-mark-a", "mark-a", "mark-b")),
+		},
 	}
 
 	for _, test := range tests {
