@@ -1,6 +1,7 @@
 package stdlib
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/zclconf/go-cty/cty"
@@ -49,11 +50,15 @@ func TestUpper(t *testing.T) {
 		},
 		{
 			cty.UnknownVal(cty.String),
-			cty.UnknownVal(cty.String),
+			cty.UnknownVal(cty.String).RefineNotNull(),
 		},
 		{
 			cty.DynamicVal,
-			cty.UnknownVal(cty.String),
+			cty.UnknownVal(cty.String).RefineNotNull(),
+		},
+		{
+			cty.StringVal("hello").Mark(1),
+			cty.StringVal("HELLO").Mark(1),
 		},
 	}
 
@@ -99,11 +104,11 @@ func TestLower(t *testing.T) {
 		},
 		{
 			cty.UnknownVal(cty.String),
-			cty.UnknownVal(cty.String),
+			cty.UnknownVal(cty.String).RefineNotNull(),
 		},
 		{
 			cty.DynamicVal,
-			cty.UnknownVal(cty.String),
+			cty.UnknownVal(cty.String).RefineNotNull(),
 		},
 	}
 
@@ -170,11 +175,11 @@ func TestReverse(t *testing.T) {
 		},
 		{
 			cty.UnknownVal(cty.String),
-			cty.UnknownVal(cty.String),
+			cty.UnknownVal(cty.String).RefineNotNull(),
 		},
 		{
 			cty.DynamicVal,
-			cty.UnknownVal(cty.String),
+			cty.UnknownVal(cty.String).RefineNotNull(),
 		},
 	}
 
@@ -241,11 +246,15 @@ func TestStrlen(t *testing.T) {
 		},
 		{
 			cty.UnknownVal(cty.String),
-			cty.UnknownVal(cty.Number),
+			cty.UnknownVal(cty.Number).Refine().NotNull().NumberRangeLowerBound(cty.Zero, true).NewValue(),
+		},
+		{
+			cty.UnknownVal(cty.String).Refine().StringPrefix("wé́́é́́é́́-").NewValue(),
+			cty.UnknownVal(cty.Number).Refine().NotNull().NumberRangeLowerBound(cty.NumberIntVal(5), true).NewValue(),
 		},
 		{
 			cty.DynamicVal,
-			cty.UnknownVal(cty.Number),
+			cty.UnknownVal(cty.Number).Refine().NotNull().NumberRangeLowerBound(cty.Zero, true).NewValue(),
 		},
 	}
 
@@ -320,6 +329,12 @@ func TestSubstr(t *testing.T) {
 			cty.StringVal(""),
 		},
 		{
+			cty.StringVal("hello"),
+			cty.NumberIntVal(0),
+			cty.NumberIntVal(0),
+			cty.StringVal(""),
+		},
+		{
 			cty.StringVal("noël"),
 			cty.NumberIntVal(0),
 			cty.NumberIntVal(3),
@@ -379,6 +394,165 @@ func TestSubstr(t *testing.T) {
 
 			if !got.RawEquals(test.Want) {
 				t.Errorf("wrong result\ngot:  %#v\nwant: %#v", got, test.Want)
+			}
+		})
+	}
+}
+
+func TestJoin(t *testing.T) {
+	tests := map[string]struct {
+		Separator cty.Value
+		Lists     []cty.Value
+		Want      cty.Value
+	}{
+		"single two-element list": {
+			cty.StringVal("-"),
+			[]cty.Value{
+				cty.ListVal([]cty.Value{cty.StringVal("hello"), cty.StringVal("world")}),
+			},
+			cty.StringVal("hello-world"),
+		},
+		"multiple single-element lists": {
+			cty.StringVal("-"),
+			[]cty.Value{
+				cty.ListVal([]cty.Value{cty.StringVal("chicken")}),
+				cty.ListVal([]cty.Value{cty.StringVal("egg")}),
+			},
+			cty.StringVal("chicken-egg"),
+		},
+		"single single-element list": {
+			cty.StringVal("-"),
+			[]cty.Value{
+				cty.ListVal([]cty.Value{cty.StringVal("chicken")}),
+			},
+			cty.StringVal("chicken"),
+		},
+		"blank separator": {
+			cty.StringVal(""),
+			[]cty.Value{
+				cty.ListVal([]cty.Value{cty.StringVal("horse"), cty.StringVal("face")}),
+			},
+			cty.StringVal("horseface"),
+		},
+		"marked list": {
+			cty.StringVal("-"),
+			[]cty.Value{
+				cty.ListVal([]cty.Value{cty.StringVal("hello"), cty.StringVal("world")}).Mark("sensitive"),
+			},
+			cty.StringVal("hello-world").Mark("sensitive"),
+		},
+		"marked separator": {
+			cty.StringVal("-").Mark("sensitive"),
+			[]cty.Value{
+				cty.ListVal([]cty.Value{cty.StringVal("hello"), cty.StringVal("world")}),
+			},
+			cty.StringVal("hello-world").Mark("sensitive"),
+		},
+		"list with some marked elements": {
+			cty.StringVal("-"),
+			[]cty.Value{
+				cty.ListVal([]cty.Value{cty.StringVal("hello").Mark("sensitive"), cty.StringVal("world")}),
+			},
+			cty.StringVal("hello-world").Mark("sensitive"),
+		},
+		"multiple marks": {
+			cty.StringVal("-").Mark("a"),
+			[]cty.Value{
+				cty.ListVal([]cty.Value{cty.StringVal("hello").Mark("b"), cty.StringVal("world").Mark("c")}),
+			},
+			cty.StringVal("hello-world").WithMarks(cty.NewValueMarks("a", "b", "c")),
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			got, err := Join(test.Separator, test.Lists...)
+
+			if err != nil {
+				t.Fatalf("unexpected error: %s", err)
+			}
+
+			if !got.RawEquals(test.Want) {
+				t.Errorf("wrong result\ngot:  %#v\nwant: %#v", got, test.Want)
+			}
+		})
+	}
+}
+
+func TestSort(t *testing.T) {
+	tests := []struct {
+		Input   cty.Value
+		Want    cty.Value
+		WantErr string
+	}{
+		{
+			cty.ListValEmpty(cty.String),
+			cty.ListValEmpty(cty.String),
+			``,
+		},
+		{
+			cty.ListVal([]cty.Value{cty.StringVal("a")}),
+			cty.ListVal([]cty.Value{cty.StringVal("a")}),
+			``,
+		},
+		{
+			cty.ListVal([]cty.Value{cty.StringVal("b"), cty.StringVal("a")}),
+			cty.ListVal([]cty.Value{cty.StringVal("a"), cty.StringVal("b")}),
+			``,
+		},
+		{
+			cty.ListVal([]cty.Value{cty.StringVal("b"), cty.StringVal("a"), cty.StringVal("c")}),
+			cty.ListVal([]cty.Value{cty.StringVal("a"), cty.StringVal("b"), cty.StringVal("c")}),
+			``,
+		},
+		{
+			cty.UnknownVal(cty.List(cty.String)),
+			cty.UnknownVal(cty.List(cty.String)).RefineNotNull(),
+			``,
+		},
+		{
+			// If the list contains any unknown values then we can still
+			// preserve the length of the list by generating a known list
+			// with unknown elements, because sort can never change the length.
+			cty.ListVal([]cty.Value{cty.StringVal("b"), cty.UnknownVal(cty.String)}),
+			cty.ListVal([]cty.Value{cty.UnknownVal(cty.String), cty.UnknownVal(cty.String)}),
+			``,
+		},
+		{
+			// For a completely unknown list we can still preserve any
+			// refinements it had for its length, because sorting can never
+			// change the length.
+			cty.UnknownVal(cty.List(cty.String)).Refine().
+				CollectionLengthLowerBound(1).
+				CollectionLengthUpperBound(2).
+				NewValue(),
+			cty.UnknownVal(cty.List(cty.String)).Refine().
+				NotNull().
+				CollectionLengthLowerBound(1).
+				CollectionLengthUpperBound(2).
+				NewValue(),
+			``,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(fmt.Sprintf("Sort(%#v)", test.Input), func(t *testing.T) {
+			got, err := Sort(test.Input)
+
+			if test.WantErr != "" {
+				errStr := fmt.Sprintf("%s", err)
+				if errStr != test.WantErr {
+					t.Errorf("wrong error\ngot:  %s\nwant: %s", errStr, test.WantErr)
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("unexpected error: %s", err.Error())
+			}
+
+			if !got.RawEquals(test.Want) {
+				t.Errorf("wrong result\ninput: %#v\ngot:   %#v\nwant:  %#v", test.Input, got, test.Want)
 			}
 		})
 	}

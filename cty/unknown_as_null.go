@@ -1,13 +1,12 @@
 package cty
 
-// UnknownAsNull returns a value of the same type as the given value but
-// with any unknown values (including nested values) replaced with null
-// values of the same type.
-//
-// This can be useful if a result is to be serialized in a format that can't
-// represent unknowns, such as JSON, as long as the caller does not need to
-// retain the unknown value information.
+
 func UnknownAsNull(val Value) Value {
+	if val.IsMarked() {
+		val, valMarks := val.Unmark()
+		return UnknownAsNull(val).WithMarks(valMarks)
+	}
+
 	ty := val.Type()
 	switch {
 	case val.IsNull():

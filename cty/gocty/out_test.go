@@ -12,10 +12,21 @@ import (
 func TestOut(t *testing.T) {
 	capsuleANative := &capsuleType1Native{"capsuleA"}
 
+	type (
+		stringAlias  string
+		boolAlias    bool
+		intAlias     int
+		float32Alias float32
+		float64Alias float64
+		bigIntAlias  big.Int
+		listIntAlias []int
+		mapIntAlias  map[string]int
+	)
+
 	tests := []struct {
 		CtyValue   cty.Value
 		TargetType reflect.Type
-		Want       interface{}
+		Want       any
 	}{
 
 		// Bool
@@ -39,6 +50,11 @@ func TestOut(t *testing.T) {
 			TargetType: reflect.PtrTo(reflect.TypeOf(false)),
 			Want:       (*bool)(nil),
 		},
+		{
+			CtyValue:   cty.True,
+			TargetType: reflect.TypeOf((*boolAlias)(nil)).Elem(),
+			Want:       boolAlias(true),
+		},
 
 		// String
 		{
@@ -60,6 +76,11 @@ func TestOut(t *testing.T) {
 			CtyValue:   cty.NullVal(cty.String),
 			TargetType: reflect.PtrTo(reflect.TypeOf("")),
 			Want:       (*string)(nil),
+		},
+		{
+			CtyValue:   cty.StringVal("hello"),
+			TargetType: reflect.TypeOf((*stringAlias)(nil)).Elem(),
+			Want:       stringAlias("hello"),
 		},
 
 		// Number
@@ -133,6 +154,26 @@ func TestOut(t *testing.T) {
 			TargetType: reflect.PtrTo(bigIntType),
 			Want:       big.NewInt(5),
 		},
+		{
+			CtyValue:   cty.NumberIntVal(5),
+			TargetType: reflect.TypeOf((*intAlias)(nil)).Elem(),
+			Want:       intAlias(5),
+		},
+		{
+			CtyValue:   cty.NumberFloatVal(1.5),
+			TargetType: reflect.TypeOf((*float32Alias)(nil)).Elem(),
+			Want:       float32Alias(1.5),
+		},
+		{
+			CtyValue:   cty.NumberFloatVal(1.5),
+			TargetType: reflect.TypeOf((*float64Alias)(nil)).Elem(),
+			Want:       float64Alias(1.5),
+		},
+		{
+			CtyValue:   cty.NumberIntVal(5),
+			TargetType: reflect.TypeOf((*bigIntAlias)(nil)),
+			Want:       (*bigIntAlias)(big.NewInt(5)),
+		},
 
 		// Lists
 		{
@@ -165,6 +206,11 @@ func TestOut(t *testing.T) {
 			TargetType: reflect.PtrTo(reflect.ArrayOf(0, reflect.TypeOf(0))),
 			Want:       testOutAssertPtrVal([0]int{}),
 		},
+		{
+			CtyValue:   cty.ListVal([]cty.Value{cty.NumberIntVal(1), cty.NumberIntVal(5)}),
+			TargetType: reflect.TypeOf((listIntAlias)(nil)),
+			Want:       listIntAlias{1, 5},
+		},
 
 		// Maps
 		{
@@ -187,6 +233,17 @@ func TestOut(t *testing.T) {
 			CtyValue:   cty.NullVal(cty.Map(cty.Number)),
 			TargetType: reflect.TypeOf((map[string]int)(nil)),
 			Want:       (map[string]int)(nil),
+		},
+		{
+			CtyValue: cty.MapVal(map[string]cty.Value{
+				"one":  cty.NumberIntVal(1),
+				"five": cty.NumberIntVal(5),
+			}),
+			TargetType: reflect.TypeOf(mapIntAlias(nil)),
+			Want: mapIntAlias{
+				"one":  1,
+				"five": 5,
+			},
 		},
 
 		// Sets
@@ -317,10 +374,10 @@ func TestOut(t *testing.T) {
 	}
 }
 
-type testOutAssertFunc func(cty.Value, reflect.Type, interface{}, *testing.T)
+type testOutAssertFunc func(cty.Value, reflect.Type, any, *testing.T)
 
-func testOutAssertPtrVal(want interface{}) testOutAssertFunc {
-	return func(ctyValue cty.Value, targetType reflect.Type, gotPtr interface{}, t *testing.T) {
+func testOutAssertPtrVal(want any) testOutAssertFunc {
+	return func(ctyValue cty.Value, targetType reflect.Type, gotPtr any, t *testing.T) {
 		wantVal := reflect.ValueOf(want)
 		gotVal := reflect.ValueOf(gotPtr)
 
@@ -343,7 +400,7 @@ func testOutAssertPtrVal(want interface{}) testOutAssertFunc {
 	}
 }
 
-func testOutWrongResult(ctyValue cty.Value, targetType reflect.Type, got interface{}, want interface{}, t *testing.T) {
+func testOutWrongResult(ctyValue cty.Value, targetType reflect.Type, got any, want any, t *testing.T) {
 	t.Errorf("wrong result\ninput:       %#v\ntarget type: %s\ngot:         %#v\nwant:        %#v", ctyValue, targetType, got, want)
 }
 

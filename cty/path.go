@@ -51,6 +51,31 @@ func (p Path) Index(v Value) Path {
 	return ret
 }
 
+// IndexInt is a typed convenience method for Index.
+func (p Path) IndexInt(v int) Path {
+	return p.Index(NumberIntVal(int64(v)))
+}
+
+// IndexString is a typed convenience method for Index.
+func (p Path) IndexString(v string) Path {
+	return p.Index(StringVal(v))
+}
+
+// IndexPath is a convenience method to start a new Path with an IndexStep.
+func IndexPath(v Value) Path {
+	return Path{}.Index(v)
+}
+
+// IndexIntPath is a typed convenience method for IndexPath.
+func IndexIntPath(v int) Path {
+	return IndexPath(NumberIntVal(int64(v)))
+}
+
+// IndexStringPath is a typed convenience method for IndexPath.
+func IndexStringPath(v string) Path {
+	return IndexPath(StringVal(v))
+}
+
 // GetAttr returns a new Path that is the reciever with a GetAttrStep appended
 // to the end.
 //
@@ -64,6 +89,53 @@ func (p Path) GetAttr(name string) Path {
 		Name: name,
 	}
 	return ret
+}
+
+// Equals compares 2 Paths for exact equality.
+func (p Path) Equals(other Path) bool {
+	if len(p) != len(other) {
+		return false
+	}
+
+	for i := range p {
+		pv := p[i]
+		switch pv := pv.(type) {
+		case GetAttrStep:
+			ov, ok := other[i].(GetAttrStep)
+			if !ok || pv != ov {
+				return false
+			}
+		case IndexStep:
+			ov, ok := other[i].(IndexStep)
+			if !ok {
+				return false
+			}
+
+			if !pv.Key.RawEquals(ov.Key) {
+				return false
+			}
+		default:
+			// Any invalid steps default to evaluating false.
+			return false
+		}
+	}
+
+	return true
+
+}
+
+// HasPrefix determines if the path p contains the provided prefix.
+func (p Path) HasPrefix(prefix Path) bool {
+	if len(prefix) > len(p) {
+		return false
+	}
+
+	return p[:len(prefix)].Equals(prefix)
+}
+
+// GetAttrPath is a convenience method to start a new Path with a GetAttrStep.
+func GetAttrPath(name string) Path {
+	return Path{}.GetAttr(name)
 }
 
 // Apply applies each of the steps in turn to successive values starting with
@@ -127,7 +199,11 @@ func (p Path) Copy() Path {
 // *any* key of the given type.
 //
 // When indexing into a set, the Key is actually the element being accessed
-// itself, since in sets elements are their own identity.
+// itself, since in sets elements are their own identity. Applying such an
+// index step to a set will test if the key is present in the set and return
+// it if so, but note that if the key contains any unknown values then the
+// result is itself an unknown value because we cannot know whether the element
+// is present or not.
 type IndexStep struct {
 	pathStepImpl
 	Key Value
@@ -136,9 +212,39 @@ type IndexStep struct {
 // Apply returns the value resulting from indexing the given value with
 // our key value.
 func (s IndexStep) Apply(val Value) (Value, error) {
+	if val == NilVal || val.IsNull() {
+		return NilVal, errors.New("cannot index a null value")
+	}
+
+	if valType := val.Type(); valType.IsSetType() {
+		// Indexing into a set with [Value.Index] is not allowed because
+		// sets don't have indices, but [Path] is often used to describe
+		// the current location in a nested data structure when working
+		// with functions like [Walk] or [Transform] and in that case
+		// traversal into a set is represented as an IndexStep whose
+		// key is the set element value itself, with the idea that a set
+		// element effectively acts as its own "key" in the set.
+		//
+		// To make it possible to use that kind of path with [Path.Apply],
+		// we have a special case here: if the index step's key is in the
+		// set then we return that value.
+		markedPresent := val.HasElement(s.Key)
+		present, marks := markedPresent.Unmark()
+		if !present.IsKnown() {
+			return UnknownVal(valType.ElementType()).WithMarks(marks), nil
+		}
+		if present.False() {
+			return NilVal, errors.New("set does not contain the requested element")
+		}
+		// We transfer the marks from the set here too, which is sufficient
+		// because cty cannot not preserve marks deeply within a set so they
+		// always aggregate onto the set as a whole during set construction.
+		return s.Key.WithMarks(marks), nil
+	}
+
 	switch s.Key.Type() {
 	case Number:
-		if !val.Type().IsListType() {
+		if !(val.Type().IsListType() || val.Type().IsTupleType()) {
 			return NilVal, errors.New("not a list type")
 		}
 	case String:
@@ -149,7 +255,9 @@ func (s IndexStep) Apply(val Value) (Value, error) {
 		return NilVal, errors.New("key value not number or string")
 	}
 
-	has := val.HasIndex(s.Key)
+	// This value needs to be stripped of marks to check True(), but Index will
+	// apply the correct marks for the result.
+	has, _ := val.HasIndex(s.Key).Unmark()
 	if !has.IsKnown() {
 		return UnknownVal(val.Type().ElementType()), nil
 	}
@@ -174,6 +282,10 @@ type GetAttrStep struct {
 // Apply returns the value of our named attribute from the given value, which
 // must be of an object type that has a value of that name.
 func (s GetAttrStep) Apply(val Value) (Value, error) {
+	if val == NilVal || val.IsNull() {
+		return NilVal, errors.New("cannot access attributes on a null value")
+	}
+
 	if !val.Type().IsObjectType() {
 		return NilVal, errors.New("not an object type")
 	}

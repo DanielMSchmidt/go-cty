@@ -5,6 +5,7 @@ import (
 	"reflect"
 
 	"github.com/zclconf/go-cty/cty"
+	"github.com/zclconf/go-cty/cty/convert"
 	"github.com/zclconf/go-cty/cty/set"
 )
 
@@ -22,7 +23,7 @@ import (
 // presented from Go's perspective. These messages are thus not appropriate
 // for display to end-users. An error returned from ToCtyValue represents a
 // bug in the calling program, not user error.
-func ToCtyValue(val interface{}, ty cty.Type) (cty.Value, error) {
+func ToCtyValue(val any, ty cty.Type) (cty.Value, error) {
 	// 'path' starts off as empty but will grow for each level of recursive
 	// call we make, so by the time toCtyValue returns it is likely to have
 	// unused capacity on the end of it, depending on how deeply-recursive
@@ -32,6 +33,11 @@ func ToCtyValue(val interface{}, ty cty.Type) (cty.Value, error) {
 }
 
 func toCtyValue(val reflect.Value, ty cty.Type, path cty.Path) (cty.Value, error) {
+	if val != (reflect.Value{}) && val.Type().AssignableTo(valueType) {
+		// If the source value is a cty.Value then we'll try to just pass
+		// through to the target type directly.
+		return toCtyPassthrough(val, ty, path)
+	}
 
 	switch ty {
 	case cty.Bool:
@@ -262,7 +268,7 @@ func toCtySet(val reflect.Value, ety cty.Type, path cty.Path) (cty.Value, error)
 			return cty.NilVal, path.NewErrorf("can't convert Go %s to %#v", val.Type(), cty.Set(ety))
 		}
 
-		rawSet := val.Interface().(set.Set)
+		rawSet := val.Interface().(set.Set[any])
 		inVals := rawSet.Values()
 
 		if len(inVals) == 0 {
@@ -505,13 +511,27 @@ func toCtyDynamic(val reflect.Value, path cty.Path) (cty.Value, error) {
 
 }
 
+func toCtyPassthrough(wrappedVal reflect.Value, wantTy cty.Type, path cty.Path) (cty.Value, error) {
+	if wrappedVal = toCtyUnwrapPointer(wrappedVal); !wrappedVal.IsValid() {
+		return cty.NullVal(wantTy), nil
+	}
+
+	givenVal := wrappedVal.Interface().(cty.Value)
+
+	val, err := convert.Convert(givenVal, wantTy)
+	if err != nil {
+		return cty.NilVal, path.NewErrorf("unsuitable value: %s", err)
+	}
+	return val, nil
+}
+
 // toCtyUnwrapPointer is a helper for dealing with Go pointers. It has three
 // possible outcomes:
 //
-// - Given value isn't a pointer, so it's just returned as-is.
-// - Given value is a non-nil pointer, in which case it is dereferenced
-//   and the result returned.
-// - Given value is a nil pointer, in which case an invalid value is returned.
+//   - Given value isn't a pointer, so it's just returned as-is.
+//   - Given value is a non-nil pointer, in which case it is dereferenced
+//     and the result returned.
+//   - Given value is a nil pointer, in which case an invalid value is returned.
 //
 // For nested pointer types, like **int, they are all dereferenced in turn
 // until a non-pointer value is found, or until a nil pointer is encountered.

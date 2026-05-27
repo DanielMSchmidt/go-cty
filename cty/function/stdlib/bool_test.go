@@ -22,11 +22,15 @@ func TestNot(t *testing.T) {
 		},
 		{
 			cty.UnknownVal(cty.Bool),
-			cty.UnknownVal(cty.Bool),
+			cty.UnknownVal(cty.Bool).RefineNotNull(),
 		},
 		{
 			cty.DynamicVal,
-			cty.UnknownVal(cty.Bool),
+			cty.UnknownVal(cty.Bool).RefineNotNull(),
+		},
+		{
+			cty.True.Mark(1),
+			cty.False.Mark(1),
 		},
 	}
 
@@ -74,22 +78,22 @@ func TestAnd(t *testing.T) {
 		{
 			cty.True,
 			cty.UnknownVal(cty.Bool),
-			cty.UnknownVal(cty.Bool),
+			cty.UnknownVal(cty.Bool).RefineNotNull(),
 		},
 		{
 			cty.UnknownVal(cty.Bool),
 			cty.UnknownVal(cty.Bool),
-			cty.UnknownVal(cty.Bool),
+			cty.UnknownVal(cty.Bool).RefineNotNull(),
 		},
 		{
 			cty.True,
 			cty.DynamicVal,
-			cty.UnknownVal(cty.Bool),
+			cty.UnknownVal(cty.Bool).RefineNotNull(),
 		},
 		{
 			cty.DynamicVal,
 			cty.DynamicVal,
-			cty.UnknownVal(cty.Bool),
+			cty.UnknownVal(cty.Bool).RefineNotNull(),
 		},
 	}
 
@@ -137,22 +141,22 @@ func TestOr(t *testing.T) {
 		{
 			cty.True,
 			cty.UnknownVal(cty.Bool),
-			cty.UnknownVal(cty.Bool),
+			cty.UnknownVal(cty.Bool).RefineNotNull(),
 		},
 		{
 			cty.UnknownVal(cty.Bool),
 			cty.UnknownVal(cty.Bool),
-			cty.UnknownVal(cty.Bool),
+			cty.UnknownVal(cty.Bool).RefineNotNull(),
 		},
 		{
 			cty.True,
 			cty.DynamicVal,
-			cty.UnknownVal(cty.Bool),
+			cty.UnknownVal(cty.Bool).RefineNotNull(),
 		},
 		{
 			cty.DynamicVal,
 			cty.DynamicVal,
-			cty.UnknownVal(cty.Bool),
+			cty.UnknownVal(cty.Bool).RefineNotNull(),
 		},
 	}
 

@@ -127,6 +127,29 @@ func impliedObjectType(dec *json.Decoder) (cty.Type, error) {
 		if atys == nil {
 			atys = make(map[string]cty.Type)
 		}
+		if existing, exists := atys[key]; exists {
+			// We didn't originally have any special treatment for multiple properties
+			// of the same name, having the type of the last one "win". But that caused
+			// some confusing error messages when the same input was subsequently used
+			// with [Unmarshal] using the returned object type, since [Unmarshal] would
+			// try to fit all of the property values of that name to whatever type
+			// the last one had, and would likely fail in doing so if the earlier
+			// properties of the same name had different types.
+			//
+			// As a compromise to avoid breaking existing successful use of _consistently-typed_
+			// redundant properties, we return an error here only if the new type
+			// differs from the old type. The error message doesn't mention that subtlety
+			// because the equal type carveout is a compatibility concession rather than
+			// a feature folks should rely on in new code.
+			if !existing.Equals(aty) {
+				// This error message is low-quality because ImpliedType doesn't do
+				// path tracking while it traverses, unlike Unmarshal. However, this
+				// is a rare enough case that we don't want to pay the cost of allocating
+				// another path-tracking buffer that would in most cases be ignored,
+				// so we just accept a low-context error message. :(
+				return cty.NilType, fmt.Errorf("duplicate %q property in JSON object", key)
+			}
+		}
 		atys[key] = aty
 	}
 
@@ -138,7 +161,7 @@ func impliedObjectType(dec *json.Decoder) (cty.Type, error) {
 }
 
 func impliedTupleType(dec *json.Decoder) (cty.Type, error) {
-	// By the time we get in here, we've already consumed the { delimiter
+	// By the time we get in here, we've already consumed the [ delimiter
 	// and so our next token should be the first value.
 
 	var etys []cty.Type
@@ -150,10 +173,9 @@ func impliedTupleType(dec *json.Decoder) (cty.Type, error) {
 		}
 
 		if ttok, ok := tok.(json.Delim); ok {
-			if rune(ttok) != ']' {
-				return cty.NilType, fmt.Errorf("unexpected delimiter %q", ttok)
+			if rune(ttok) == ']' {
+				break
 			}
-			break
 		}
 
 		ety, err := impliedTypeForTok(tok, dec)

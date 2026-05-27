@@ -20,7 +20,7 @@ The following methods apply to all values:
 * `IsNull` returns `true` if the receiver is a null value, or `false`
   otherwise.
 
-All values except capsule-typed values can be seralized with the builtin
+All values except capsule-typed values can be serialized with the builtin
 Go package `encoding/gob`. Values can also be used with the `%#v` pattern
 in the `fmt` package to print out a Go-oriented serialization of the
 value.
@@ -29,13 +29,24 @@ value.
 
 ### `cty.Number`
 
-The number type represents arbitrary-precision floating point numbers.
+The number type represents what we'll clumsily call "JSON numbers".
+Technically, this means the set of numbers that have a canonical decimal
+representation in our JSON encoding _and_ that can be represented in memory
+with 512 bits of binary floating point precision.
 
-Since numbers are arbitrary-precision, there is no need to worry about
-integer overflow/underflow or loss of precision during arithmetic operations.
-However, eventually a calling application will probably want to convert a
+Since these numbers have high precision, there is little need to worry about
+integer overflow/underflow or over-zealous rounding during arithmetic
+operations. In particular, `cty.Number` can represent the full range of
+`int64` with no loss. However, numbers _are_ still finite in memory and subject
+to approximation in binary-to-decimal and decimal-to-binary conversions, and so
+can't accurately represent _all_ real numbers.
+
+Eventually a calling application will probably want to convert a
 number to one of the Go numeric types, at which point its range will be
 constrained to fit within that type, generating an error if it does not fit.
+Because the number range is larger than all of the Go integer types, it's
+always possible to convert a whole number to a Go integer without any loss,
+as long as it value is within the required range.
 
 The following additional operations are supported on numbers:
 
@@ -60,10 +71,17 @@ The following additional operations are supported on numbers:
 `cty.Number` values can be constructed using several different factory
 functions:
 
-* `NumberVal` creates a number value from a `*big.Float`, from the `math/big` package.
+* `ParseNumberVal` creates a number value by parsing a decimal representation
+  of it given as a string. This is the constructor that most properly
+  represents the full documented range of number values; the others below
+  care convenient for many cases, but have a more limited range.
 * `NumberIntVal` creates a number value from a native `int64` value.
 * `NumberUIntVal` creates a number value from a native `uint64` value.
 * `NumberFloatVal` creates a number value from a native `float64` value.
+* `NumberVal` creates a number value from a `*big.Float`, from the `math/big` package.
+  This can preserve arbitrary big floats without modification, but comes
+  at the risk of introducing precision inconsisistencies. Prefer the other
+  constructors for most uses.
 
 The core API only allows extracting the value from a known number as a
 `*big.Float` using the `AsBigFloat` method. However,
@@ -78,6 +96,9 @@ The following numbers are provided as package variables for convenience:
   numbers are less than this value.
 * `cty.NegativeInfinity` represents negative infinity as a number. All other
   numbers are greater than this value.
+
+Note that the two infinity values are always out of range for a conversion to
+any Go primitive integer type.
 
 ### `cty.String`
 
@@ -97,13 +118,13 @@ Go `string` representation of a known string, after normalization.
 
 ### `cty.Bool`
 
-The bool type represents boolean (true of false) values.
+The bool type represents boolean (true or false) values.
 
 The following additional operations are supported on bool values:
 
 * `And` computes the logical AND operation for two boolean values.
 * `Not` returns the boolean opposite of the receiver.
-* `Or` computes the ligical OR operation for two boolean values.
+* `Or` computes the logical OR operation for two boolean values.
 
 Calling applications may either work directly with the predefined `cty.True`
 and `cty.False` variables, or dynamically create a boolean value using
@@ -201,15 +222,21 @@ The following integration methods can be used with known set-typed values:
 Set membership is determined by equality, which has an interesting consequence
 for unknown values. Since unknown values are never equal to one another,
 theoretically an infinite number of unknown values can be in a set (constrained
-by available memory) but can never be detected by calls to `HasIndex`. However,
-they _can_ be seen in the set's length and by iterating over its members.
+by available memory) but can never be detected by calls to `HasIndex`.
+
+A set with at least one unknown value in it has an unknown length, because the
+unknown values may or may not match each other (and thus coalesce into a single
+value) once they become known. However, if a set contains a mixture of known
+and unknown values then `HasIndex` will return true for those values because
+they are guaranteed to remain present no matter what final known value each
+of the unknown values takes on.
 
 ## Structural Types
 
 `cty` has two different kinds of structural type. They have in common that
 they combine a number of values of arbitrary types together into a single
 value, but differ in how those values are internally organized and in which
-operations are used to retreive them.
+operations are used to retrieve them.
 
 ### `cty.Object` types
 
@@ -236,6 +263,14 @@ that is implicitly created for that value.
 
 The variable `cty.EmptyObject` contains the object type with no attributes,
 and `cty.EmptyObjectVal` is the only non-null, known value of that type.
+
+There is **currently-experimental** support for creating object types where
+one or more attributes is annotated as being "optional", using the alternative
+constructor `cty.ObjectWithOptionalAttrs`. The behavior of that function or
+of any other function working with its result is subject to change even in
+future minor versions of `cty`. The optional-attribute annotations are
+considered only during type conversion, so for more information refer to
+the guide [Converting between `cty` types](convert.md).
 
 ### `cty.Tuple` types
 
@@ -327,3 +362,7 @@ by all of the other packages that build on the core `cty` API. They should
 be used with care and the documentation for other packages should be consulted
 for information about caveats and constraints relating to their use.
 
+It's possible for a calling application to write additional logic to make
+capsule types support a subset of operations that are generally expected to
+work for values of any type. For more information, see
+[capsule type operation definitions](./capsule-type-operations.md).

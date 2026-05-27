@@ -128,6 +128,11 @@ func TestTypeTestConformance(t *testing.T) {
 			Conforms: true,
 		},
 		{
+			Receiver: Object(map[string]Type{"name": String}),
+			Given:    Object(map[string]Type{"gnome": String}),
+			Conforms: false,
+		},
+		{
 			Receiver: Object(map[string]Type{"name": Number}),
 			Given:    Object(map[string]Type{"name": String}),
 			Conforms: false,
@@ -136,6 +141,16 @@ func TestTypeTestConformance(t *testing.T) {
 			Receiver: Object(map[string]Type{"name": Number}),
 			Given:    Object(map[string]Type{"name": String, "number": Number}),
 			Conforms: false,
+		},
+		{
+			Receiver: ObjectWithOptionalAttrs(map[string]Type{"name": Number}, []string{"name"}),
+			Given:    Object(map[string]Type{"name": Number}),
+			Conforms: true,
+		},
+		{
+			Receiver: ObjectWithOptionalAttrs(map[string]Type{"name": Number}, []string{"name"}),
+			Given:    EmptyObject,
+			Conforms: false, // "optionalness" of attributes is only considered under conversion, not for conformance
 		},
 		{
 			Receiver: EmptyTuple,

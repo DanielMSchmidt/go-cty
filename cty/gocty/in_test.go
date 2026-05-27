@@ -14,7 +14,7 @@ func TestIn(t *testing.T) {
 	capsuleANative := &capsuleType1Native{"capsuleA"}
 
 	tests := []struct {
-		GoValue interface{}
+		GoValue any
 		Type    cty.Type
 		Want    cty.Value
 	}{
@@ -243,12 +243,12 @@ func TestIn(t *testing.T) {
 			Want:    cty.SetValEmpty(cty.Number),
 		},
 		{
-			GoValue: set.NewSet(&testSetRules{}),
+			GoValue: set.NewSet(set.Rules[any](&testSetRules{})),
 			Type:    cty.Set(cty.Number),
 			Want:    cty.SetValEmpty(cty.Number),
 		},
 		{
-			GoValue: set.NewSetFromSlice(&testSetRules{}, []interface{}{1, 2}),
+			GoValue: set.NewSetFromSlice(set.Rules[any](&testSetRules{}), []any{1, 2}),
 			Type:    cty.Set(cty.Number),
 			Want: cty.SetVal([]cty.Value{
 				cty.NumberIntVal(1),
@@ -320,7 +320,7 @@ func TestIn(t *testing.T) {
 			}),
 		},
 		{
-			GoValue: map[string]interface{}{
+			GoValue: map[string]any{
 				"name":   "Steven",
 				"number": 1,
 			},
@@ -334,7 +334,7 @@ func TestIn(t *testing.T) {
 			}),
 		},
 		{
-			GoValue: map[string]interface{}{
+			GoValue: map[string]any{
 				"number": 1,
 			},
 			Type: cty.Object(map[string]cty.Type{
@@ -349,7 +349,7 @@ func TestIn(t *testing.T) {
 
 		// Tuples
 		{
-			GoValue: []interface{}{},
+			GoValue: []any{},
 			Type:    cty.EmptyTuple,
 			Want:    cty.EmptyTupleVal,
 		},
@@ -367,7 +367,7 @@ func TestIn(t *testing.T) {
 			}),
 		},
 		{
-			GoValue: []interface{}{1, 2, 3},
+			GoValue: []any{1, 2, 3},
 			Type: cty.Tuple([]cty.Type{
 				cty.Number,
 				cty.Number,
@@ -380,7 +380,7 @@ func TestIn(t *testing.T) {
 			}),
 		},
 		{
-			GoValue: []interface{}{1, "hello", 3},
+			GoValue: []any{1, "hello", 3},
 			Type: cty.Tuple([]cty.Type{
 				cty.Number,
 				cty.String,
@@ -393,7 +393,7 @@ func TestIn(t *testing.T) {
 			}),
 		},
 		{
-			GoValue: []interface{}(nil),
+			GoValue: []any(nil),
 			Type:    cty.Tuple([]cty.Type{cty.Number}),
 			Want:    cty.NullVal(cty.Tuple([]cty.Type{cty.Number})),
 		},
@@ -420,6 +420,18 @@ func TestIn(t *testing.T) {
 			GoValue: map[string]cty.Value{"number": cty.NumberIntVal(2)},
 			Type:    cty.Map(cty.DynamicPseudoType),
 			Want:    cty.MapVal(map[string]cty.Value{"number": cty.NumberIntVal(2)}),
+		},
+
+		// Passthrough
+		{
+			GoValue: cty.NumberIntVal(2),
+			Type:    cty.Number,
+			Want:    cty.NumberIntVal(2),
+		},
+		{
+			GoValue: cty.StringVal("hi"),
+			Type:    cty.String,
+			Want:    cty.StringVal("hi"),
 		},
 	}
 
@@ -460,12 +472,16 @@ func ptrToPtrToString(val string) **string {
 
 type testSetRules struct{}
 
-func (r testSetRules) Hash(v interface{}) int {
+func (r testSetRules) Hash(v any) int {
 	return v.(int)
 }
 
-func (r testSetRules) Equivalent(v1 interface{}, v2 interface{}) bool {
+func (r testSetRules) Equivalent(v1 any, v2 any) bool {
 	return v1 == v2
+}
+
+func (r testSetRules) SameRules(other set.Rules[any]) bool {
+	return r == other
 }
 
 type capsuleType1Native struct {
